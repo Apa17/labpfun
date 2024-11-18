@@ -46,7 +46,6 @@ lintComputeConstant (Infix o (Lit (LitBool l1)) (Lit (LitBool l2))) =
   in r
 lintComputeConstant (Infix o (Lit l1) (Lit l2)) =
    let e = Infix o (Lit l1) (Lit l2) in (e, [])
-lintComputeConstant (Var name) = (Var name, [])
 lintComputeConstant (Lit l) = (Lit l, [])
 lintComputeConstant (App e1 e2) =
   let (e1', ls1) = lintComputeConstant e1 in
@@ -72,6 +71,7 @@ lintComputeConstant (Infix o e1 e2) =
         (Infix o e1' e2', [])
     else 
         let (e', ls) = lintComputeConstant (Infix o e1' e2') in (e', ls1 ++ ls2 ++ ls )
+lintComputeConstant (Var name) = (Var name, [])
 
 
 
