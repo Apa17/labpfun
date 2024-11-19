@@ -1,0 +1,5 @@
+runhaskell .\Linter.hs -s casos/caso01.mhs
+
+
+
+runhaskell .\Linter.hs -s -lintComputeConstant casos/caso01.mhs

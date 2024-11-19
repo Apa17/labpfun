@@ -1,8 +1,8 @@
 module Lintings where
 
 import AST
+import Distribution.TestSuite (TestInstance (name))
 import LintTypes
-import Distribution.TestSuite (TestInstance(name))
 
 --------------------------------------------------------------------------------
 -- AUXILIARES
@@ -11,6 +11,20 @@ import Distribution.TestSuite (TestInstance(name))
 -- Computa la lista de variables libres de una expresión
 freeVariables :: Expr -> [Name]
 freeVariables = undefined
+
+-- Linting extra
+-- lintBool (Infix Or (Lit (LitBool True)) e) =
+--   let t = Lit (LitBool True)
+--    in (t, [LintBool (Infix Or t e) t])
+-- lintBool (Infix Or e (Lit (LitBool True))) =
+--   let t = Lit (LitBool True)
+--    in (t, [LintBool (Infix Or e t) t])
+-- lintBool (Infix And (Lit (LitBool False)) e) =
+--   let f = Lit (LitBool False)
+--    in (f, [LintBool (Infix And f e) f])
+-- lintBool (Infix And e (Lit (LitBool False))) =
+--   let f = Lit (LitBool False)
+--    in (f, [LintBool (Infix And e f) f])
 
 --------------------------------------------------------------------------------
 -- LINTINGS
@@ -25,55 +39,58 @@ freeVariables = undefined
 -- Construye sugerencias de la forma (LintCompCst e r)
 lintComputeConstant :: Linting Expr
 lintComputeConstant (Infix o (Lit (LitInt l1)) (Lit (LitInt l2))) =
-  let e = Infix o (Lit (LitInt l1)) (Lit (LitInt l2)) in
-  let r = case o of
+  let e = Infix o (Lit (LitInt l1)) (Lit (LitInt l2))
+   in let r = case o of
             Add -> let res = Lit (LitInt (l1 + l2)) in (res, [LintCompCst e res])
             Sub ->
-                if (l1 - l2) >= 0 then let res = Lit (LitInt (l1 - l2)) in (res , [LintCompCst e res])
-                   else (e, [])
-            Mult -> (Lit (LitInt (l1 * l2)), [])
-            Div -> if l2 /= 0 then let res = Lit (LitInt (l1 `div` l2)) in (res, [LintCompCst e res] )
-                   else (e, [])
+              if (l1 - l2) >= 0
+                then let res = Lit (LitInt (l1 - l2)) in (res, [LintCompCst e res])
+                else (e, [])
+            Mult -> let res = Lit (LitInt (l1 * l2)) in (res, [LintCompCst e res])
+            Div ->
+              if l2 /= 0
+                then let res = Lit (LitInt (l1 `div` l2)) in (res, [LintCompCst e res])
+                else (e, [])
             Eq -> let res = Lit (LitBool (l1 == l2)) in (res, [LintCompCst e res])
             GTh -> let res = Lit (LitBool (l1 > l2)) in (res, [LintCompCst e res])
             LTh -> let res = Lit (LitBool (l1 < l2)) in (res, [LintCompCst e res])
-  in r
+       in r
 lintComputeConstant (Infix o (Lit (LitBool l1)) (Lit (LitBool l2))) =
-  let e = Infix o (Lit (LitBool l1)) (Lit (LitBool l2)) in
-  let r = case o of
-            And ->let res = Lit (LitBool (l1 && l2)) in  (res, [LintCompCst e res])
+  let e = Infix o (Lit (LitBool l1)) (Lit (LitBool l2))
+   in let r = case o of
+            And -> let res = Lit (LitBool (l1 && l2)) in (res, [LintCompCst e res])
             Or -> let res = Lit (LitBool (l1 || l2)) in (res, [LintCompCst e res])
-  in r
+       in r
 lintComputeConstant (Infix o (Lit l1) (Lit l2)) =
-   let e = Infix o (Lit l1) (Lit l2) in (e, [])
-lintComputeConstant (Lit l) = (Lit l, [])
+  let e = Infix o (Lit l1) (Lit l2) in (e, [])
 lintComputeConstant (App e1 e2) =
-  let (e1', ls1) = lintComputeConstant e1 in
-  let  (e2', ls2) = lintComputeConstant e2
-   in (App e1' e2', ls1 ++ ls2)
-lintComputeConstant (Lam name e) = 
-  let (e', ls) = lintComputeConstant e in
-  (Lam name e', ls)
+  let (e1', ls1) = lintComputeConstant e1
+   in let (e2', ls2) = lintComputeConstant e2
+       in (App e1' e2', ls1 ++ ls2)
+lintComputeConstant (Lam name e) =
+  let (e', ls) = lintComputeConstant e
+   in (Lam name e', ls)
 lintComputeConstant (If e1 e2 e3) =
-  let (e1', ls1) = lintComputeConstant e1 in
-  let (e2', ls2) = lintComputeConstant e2 in
-  let (e3', ls3) = lintComputeConstant e3
-   in (If e1' e2' e3', ls1 ++ ls2 ++ ls3)
+  let (e1', ls1) = lintComputeConstant e1
+   in let (e2', ls2) = lintComputeConstant e2
+       in let (e3', ls3) = lintComputeConstant e3
+           in (If e1' e2' e3', ls1 ++ ls2 ++ ls3)
 lintComputeConstant (Case e1 e2 (name1, name2, e3)) =
-  let (e1', ls1) = lintComputeConstant e1 in
-  let (e2', ls2) = lintComputeConstant e2 in
-  let (e3', ls3) = lintComputeConstant e3
-   in (Case e1' e2' (name1, name2, e3'), ls1 ++ ls2 ++ ls3)
+  let (e1', ls1) = lintComputeConstant e1
+   in let (e2', ls2) = lintComputeConstant e2
+       in let (e3', ls3) = lintComputeConstant e3
+           in (Case e1' e2' (name1, name2, e3'), ls1 ++ ls2 ++ ls3)
 lintComputeConstant (Infix o e1 e2) =
-  let (e1', ls1) = lintComputeConstant e1 in
-  let (e2', ls2) = lintComputeConstant e2 in 
-  if null ls1  && null ls2 then 
-        (Infix o e1' e2', [])
-    else 
-        let (e', ls) = lintComputeConstant (Infix o e1' e2') in (e', ls1 ++ ls2 ++ ls )
-lintComputeConstant (Var name) = (Var name, [])
-
-
+  let (e1', ls1) = lintComputeConstant e1
+   in let (e2', ls2) = lintComputeConstant e2
+       in if null ls1 && null ls2
+            then
+              (Infix o e1' e2', [])
+            else
+              let (e', ls) = lintComputeConstant (Infix o e1' e2') in (e', ls1 ++ ls2 ++ ls)
+-- lintComputeConstant (Lit l) = (Lit l, [])
+-- lintComputeConstant (Var name) = (Var name, [])
+lintComputeConstant e = (e, [])
 
 --------------------------------------------------------------------------------
 -- Eliminación de chequeos redundantes de booleanos
@@ -83,7 +100,46 @@ lintComputeConstant (Var name) = (Var name, [])
 -- Elimina chequeos de la forma e == True, True == e, e == False y False == e
 -- Construye sugerencias de la forma (LintBool e r)
 lintRedBool :: Linting Expr
-lintRedBool = undefined
+lintRedBool (Infix Eq (Lit (LitBool True)) e) =
+  let t = Lit (LitBool True)
+   in (e, [LintBool (Infix Eq t e) e])
+lintRedBool (Infix Eq e (Lit (LitBool True))) =
+  let t = Lit (LitBool True)
+   in (e, [LintBool (Infix Eq e t) e])
+lintRedBool (Infix Eq (Lit (LitBool False)) e) =
+  let f = Lit (LitBool False)
+   in let res = App (Var "not") e
+       in (res, [LintBool (Infix Eq f e) res])
+lintRedBool (Infix Eq e (Lit (LitBool False))) =
+  let f = Lit (LitBool False)
+   in let res = App (Var "not") e
+       in (res, [LintBool (Infix Eq e f) res])
+lintRedBool (App e1 e2) =
+  let (e1', ls1) = lintRedBool e1
+   in let (e2', ls2) = lintRedBool e2
+       in (App e1' e2', ls1 ++ ls2)
+lintRedBool (Lam name e) = lintRedBool e
+lintRedBool (If e1 e2 e3) =
+  let (e1', ls1) = lintRedBool e1
+   in let (e2', ls2) = lintRedBool e2
+       in let (e3', ls3) = lintRedBool e3
+           in (If e1' e2' e3', ls1 ++ ls2 ++ ls3)
+lintRedBool (Case e1 e2 (name1, name2, e3)) =
+  let (e1', ls1) = lintRedBool e1
+   in let (e2', ls2) = lintRedBool e2
+       in let (e3', ls3) = lintRedBool e3
+           in (Case e1' e2' (name1, name2, e3'), ls1 ++ ls2 ++ ls3)
+lintRedBool (Infix o e1 e2) =
+  let (e1', ls1) = lintRedBool e1
+   in let (e2', ls2) = lintRedBool e2
+       in if null ls1 && null ls2
+            then
+              (Infix o e1' e2', [])
+            else
+              let (e', ls) = lintRedBool (Infix o e1' e2') in (e', ls1 ++ ls2 ++ ls)
+-- lintRedBool (Lit l) = (Lit l, [])
+-- lintRedBool (Var name) = (Var name, [])
+lintRedBool e = (e, [])
 
 --------------------------------------------------------------------------------
 -- Eliminación de if redundantes
